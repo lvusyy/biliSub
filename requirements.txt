@@ -1,0 +1,6 @@
+bilibili-api-python==17.1.2
+tenacity>=8.0.0
+requests>=2.25.0
+aiohttp>=3.8.0
+openai-whisper>=20230918
+tqdm>=4.60.0
