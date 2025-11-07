@@ -141,10 +141,11 @@ python enhanced_bilisub.py -i "https://www.bilibili.com/video/BV1xx411c79H" --as
 
 - 自适应策略：根据字幕关键词与语言，推断类型（教程/幻灯片/游戏/访谈/电影等），自动设置帧采样频率与视觉提示风格。
 - 多提供方接入：
-  - OpenRouter（需 `OPENROUTER_API_KEY`）
-  - OpenAI 兼容（OpenAI/自建/vLLM，支持 `--base-url` 与 `OPENAI_API_KEY`）
-  - Ollama 本地多模态（`--base-url http://localhost:11434`）
+  - OpenRouter（默认 `https://openrouter.ai/api/v1`，key=`OPENROUTER_API_KEY`）
+  - OpenAI 兼容（OpenAI/自建/vLLM，`--base-url` 如 `http://localhost:8000/v1`，key=`OPENAI_API_KEY`）
+  - Ollama（`--base-url http://localhost:11434`，模型如 `llava:13b`）
   - Mock（离线联通性测试，不调用网络）
+- 缓存：支持按 BV 号缓存结果（`output/cache/<BV>/`），可命中 latest 或精确配置缓存。
 - 输出：包含 `title/topics/timeline/key_takeaways/action_items/final_summary` 的 JSON。
 
 安装依赖：
@@ -172,8 +173,13 @@ python -m bilisub \
   --provider openrouter \
   --vlm-model qwen2.5-vl-7b-instruct \
   --llm-model qwen2.5-7b-instruct \
+  --bv BV1xxxxxxx \
   --out output/v2_summary.json
 ```
+
+缓存说明：
+- 若提供 `--bv`，会以 `output/cache/<BV>/` 目录缓存结果；下次同 BV 任务将直接命中缓存（无需再次解析画面/总结）。
+- 同时按配置（provider/vlm/llm/策略）生成细粒度缓存文件，既能命中 `latest`，也能命中“精确配置”。
 
 使用 vLLM（OpenAI 兼容）：
 
@@ -203,6 +209,7 @@ python -m bilisub \
 常用参数：
 - `--max-frames` 控制最多采样的帧数（默认 40）。
 - `--language` 指定总结语言（`auto/zh/en`）。
+- `--bv` B 站视频 BV 号，用于缓存命中与结果复用。
 
 桥接现有下载流程（V1 -> V2）：
 
@@ -213,11 +220,23 @@ python bridge_v1_v2.py --output-dir output \
   --provider openrouter \
   --vlm-model qwen3-vl \
   --llm-model qwen2.5-7b-instruct \
+  --bv BV1xxxxxxx \
   --out output/v2_summary_from_v1.json
 ```
 
-- `--output-dir` 会在该目录下递归查找最新的 `.srt/.ass/.vtt/.txt/.json` 字幕文件。
+- `--output-dir` 会在该目录下递归查找最新的 `.srt/.ass/.vtt/.txt/.json` 字幕文件；也可通过 `--subs` 显式指定。
 - 若未提供 `--video` 则使用 `dry-run` 路径跑通管线（仅验证，结果有限）。
+
+输出示例（简化）：
+
+```json
+{
+  "strategy": {"kind": "tutorial", "frames_per_min": 12, "vlm_prompt_style": "slide_extractor"},
+  "visual_notes": [{"scene_title": "...", "bullet_points": ["..."]}],
+  "summary": {"title": "...", "topics": ["..."], "final_summary": "..."},
+  "meta": {"cache_hit": false, "pipeline_version": "2.0.0"}
+}
+```
 
 ---
 

@@ -49,6 +49,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--out", type=str, default="output/v2_summary.json", help="输出JSON路径")
     parser.add_argument("--language", type=str, default="auto", help="总结语言，auto/zh/en")
     parser.add_argument("--dry-run", action="store_true", help="不读取视频文件，使用Mock Provider做演示")
+    parser.add_argument("--bv", type=str, default=None, help="B站视频BV号（用于缓存命中与复用结果）")
 
     args = parser.parse_args(argv)
 
@@ -115,9 +116,25 @@ def main(argv: Optional[list[str]] = None) -> None:
         language=strategy.language,
     )
 
+    # 直接复用 API 以获取缓存加持
+    from .api import run_pipeline
+    payload = run_pipeline(
+        video_path=(None if args.dry_run else (str(Path(args.video)) if args.video else None)),
+        subs_path=str(subs_path),
+        provider=args.provider,
+        vlm_model=cfg.vlm_model,
+        llm_model=cfg.llm_model,
+        base_url=cfg.base_url,
+        api_key=cfg.api_key,
+        language=strategy.language,
+        max_frames=min(args.max_frames, strategy.max_frames),
+        dry_run=args.dry_run,
+        bv_id=args.bv,
+    )
+
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     rprint(f"[green]已写入[/green] {out_path}")
 
 

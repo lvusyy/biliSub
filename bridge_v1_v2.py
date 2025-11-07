@@ -29,6 +29,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     p.add_argument("--output-dir", type=str, default="output", help="V1工具生成字幕的目录（递归查找）")
     p.add_argument("--subs", type=str, default=None, help="显式指定字幕文件（如提供则不再搜索目录）")
     p.add_argument("--video", type=str, default=None, help="视频文件路径（可选；若不提供则使用 dry-run）")
+    p.add_argument("--bv", type=str, default=None, help="B站视频BV号（用于缓存命中与复用结果）")
 
     p.add_argument("--provider", type=str, default="mock", choices=["openrouter", "openai", "vllm", "ollama", "mock"], help="推理提供方")
     p.add_argument("--vlm-model", type=str, default="qwen2.5-vl-7b-instruct")
@@ -67,6 +68,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         language=args.language,
         max_frames=args.max_frames,
         dry_run=(args.video is None),
+        bv_id=args.bv,
     )
 
     out_path = Path(args.out)
