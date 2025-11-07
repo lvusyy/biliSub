@@ -18,11 +18,13 @@ def _profile_hash(profile: Dict[str, Any]) -> str:
     return hashlib.sha1(data).hexdigest()[:12]
 
 
-def cache_dir_for_bv(bv_id: str, root: Path = DEFAULT_CACHE_ROOT) -> Path:
+def cache_dir_for_bv(bv_id: str, root: Optional[Path] = None) -> Path:
+    if root is None:
+        root = DEFAULT_CACHE_ROOT
     return root / bv_id
 
 
-def save_result(bv_id: str, profile: Dict[str, Any], payload: Dict[str, Any], root: Path = DEFAULT_CACHE_ROOT) -> Path:
+def save_result(bv_id: str, profile: Dict[str, Any], payload: Dict[str, Any], root: Optional[Path] = None) -> Path:
     d = cache_dir_for_bv(bv_id, root)
     _ensure_dir(d)
     h = _profile_hash(profile)
@@ -46,7 +48,7 @@ def save_result(bv_id: str, profile: Dict[str, Any], payload: Dict[str, Any], ro
     return result_path
 
 
-def load_latest(bv_id: str, root: Path = DEFAULT_CACHE_ROOT) -> Optional[Dict[str, Any]]:
+def load_latest(bv_id: str, root: Optional[Path] = None) -> Optional[Dict[str, Any]]:
     p = cache_dir_for_bv(bv_id, root) / "result_latest.json"
     if not p.exists():
         return None
@@ -56,7 +58,7 @@ def load_latest(bv_id: str, root: Path = DEFAULT_CACHE_ROOT) -> Optional[Dict[st
         return None
 
 
-def load_by_profile(bv_id: str, profile: Dict[str, Any], root: Path = DEFAULT_CACHE_ROOT) -> Optional[Dict[str, Any]]:
+def load_by_profile(bv_id: str, profile: Dict[str, Any], root: Optional[Path] = None) -> Optional[Dict[str, Any]]:
     d = cache_dir_for_bv(bv_id, root)
     h = _profile_hash(profile)
     p = d / f"result_{h}.json"

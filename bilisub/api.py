@@ -28,18 +28,27 @@ def run_pipeline(
     max_frames: int = 40,
     dry_run: bool = False,
     bv_id: Optional[str] = None,
+    source_url: Optional[str] = None,
+    cache_readonly: bool = False,
+    refresh_cache: bool = False,
+    cache_root: Optional[str] = None,
+    save_frames_dir: Optional[str] = None,
+    vlm_req_interval: float = 0.0,
 ) -> Dict[str, Any]:
     if isinstance(provider, str):
         provider = ProviderKind(provider)
 
-    # 0) Cache quick path by BV only
-    if bv_id:
-        cached = load_latest(bv_id)
+    # 0) Resolve BV from inputs
+    from .utils import extract_bv_id, derive_bv_from_paths
+    effective_bv = bv_id or (extract_bv_id(source_url) if source_url else None) or derive_bv_from_paths(subs_path, video_path)
+
+    # 1) Cache quick path by BV only (unless refresh requested)
+    if effective_bv and not refresh_cache:
+        cached = load_latest(effective_bv, root=Path(cache_root) if cache_root else None or None)
         if cached and isinstance(cached, dict) and "data" in cached:
             out = cached["data"]
-            # 标注缓存命中
             out.setdefault("meta", {})
-            out["meta"].update({"cache_hit": True, "cache_bv": bv_id, "pipeline_version": PIPELINE_VERSION})
+            out["meta"].update({"cache_hit": True, "cache_bv": effective_bv, "pipeline_version": PIPELINE_VERSION})
             return out
 
     subs_text = Path(subs_path).read_text(encoding="utf-8", errors="ignore")
@@ -60,12 +69,12 @@ def run_pipeline(
         },
     }
 
-    if bv_id:
-        precise = load_by_profile(bv_id, profile)
+    if effective_bv and not refresh_cache:
+        precise = load_by_profile(effective_bv, profile, root=Path(cache_root) if cache_root else None or None)
         if precise and isinstance(precise, dict) and "data" in precise:
             out = precise["data"]
             out.setdefault("meta", {})
-            out["meta"].update({"cache_hit": True, "cache_bv": bv_id, "pipeline_version": PIPELINE_VERSION})
+            out["meta"].update({"cache_hit": True, "cache_bv": effective_bv, "pipeline_version": PIPELINE_VERSION})
             return out
 
     frames: List = []
@@ -94,6 +103,7 @@ def run_pipeline(
         frames=frames,
         strategy=strategy,
         dry_run=dry_run,
+        req_interval=vlm_req_interval,
     )
 
     result = summarize_video(
@@ -113,10 +123,17 @@ def run_pipeline(
         },
         "summary": result,
         "visual_notes": visual_notes,
-        "meta": {"cache_hit": False, "pipeline_version": PIPELINE_VERSION},
+        "meta": {"cache_hit": False, "pipeline_version": PIPELINE_VERSION, "cache_bv": effective_bv},
     }
 
-    if bv_id:
-        save_result(bv_id, profile, payload)
+    # Save frames if requested
+    if save_frames_dir and frames:
+        outdir = Path(save_frames_dir)
+        outdir.mkdir(parents=True, exist_ok=True)
+        for i, img in enumerate(frames):
+            img.save(outdir / f"frame_{i:04d}.jpg", format="JPEG", quality=85)
+
+    if effective_bv and not cache_readonly:
+        save_result(effective_bv, profile, payload, root=Path(cache_root) if cache_root else None or None)
 
     return payload

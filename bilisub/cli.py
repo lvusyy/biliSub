@@ -44,7 +44,13 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--out", type=str, default="output/v2_summary.json", help="输出JSON路径")
     parser.add_argument("--language", type=str, default="auto", help="总结语言，auto/zh/en")
     parser.add_argument("--dry-run", action="store_true", help="不读取视频文件，使用Mock Provider做演示")
+    parser.add_argument("--url", type=str, default=None, help="可选：B站视频URL（自动提取BV号）")
     parser.add_argument("--bv", type=str, default=None, help="B站视频BV号（用于缓存命中与复用结果）")
+    parser.add_argument("--cache-readonly", action="store_true", help="只读缓存：命中直接返回，但不写入新结果")
+    parser.add_argument("--refresh-cache", action="store_true", help="忽略缓存，强制重新解析并覆盖缓存")
+    parser.add_argument("--save-frames", action="store_true", help="保存采样帧缩略图")
+    parser.add_argument("--save-frames-dir", type=str, default=None, help="保存帧图片的目录；若未提供且 --save-frames 开启，将按 BV 放入 output/frames/<BV>/")
+    parser.add_argument("--vlm-req-interval", type=float, default=0.0, help="连续 VLM 请求之间的间隔秒数（限流）")
 
     args = parser.parse_args(argv)
 
@@ -60,6 +66,16 @@ def main(argv: Optional[list[str]] = None) -> None:
     if not subs_path.exists():
         raise SystemExit(f"字幕文件不存在: {subs_path}")
 
+    # 解析 BV：优先 --bv，其次 --url，其次从文件名推断
+    from .utils import extract_bv_id, derive_bv_from_paths
+    derived_bv = args.bv or (extract_bv_id(args.url) if args.url else None) or derive_bv_from_paths(str(subs_path), args.video)
+
+    # 保存帧目录解析
+    save_frames_dir = args.save_frames_dir
+    if args.save_frames and not save_frames_dir:
+        target_bv = derived_bv or "anon"
+        save_frames_dir = str(Path("output/frames") / target_bv)
+
     # 直接调用 API（内含缓存逻辑）
     from .api import run_pipeline
     payload = run_pipeline(
@@ -73,7 +89,12 @@ def main(argv: Optional[list[str]] = None) -> None:
         language=args.language,
         max_frames=args.max_frames,
         dry_run=args.dry_run,
-        bv_id=args.bv,
+        bv_id=derived_bv,
+        source_url=args.url,
+        cache_readonly=args.cache_readonly,
+        refresh_cache=args.refresh_cache,
+        save_frames_dir=save_frames_dir,
+        vlm_req_interval=args.vlm_req_interval,
     )
 
     # 展示解析策略（以结果为准）

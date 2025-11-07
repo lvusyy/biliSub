@@ -4,6 +4,12 @@ import json
 from typing import Any, Dict, List
 
 from .providers.base import ProviderClient
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8))
+def _chat_with_retry(provider: ProviderClient, messages, model: str):
+    return provider.chat(messages=messages, model=model)
 
 
 def _build_summary_prompt(language: str) -> str:
@@ -34,7 +40,7 @@ def summarize_video(provider: ProviderClient, model: str, subtitles_text: str,
         {"type": "text", "text": "画面要点(JSON):\n" + json.dumps(visual_notes, ensure_ascii=False)[:14000]},
     ]
 
-    text = provider.chat(messages=[{"role": "user", "content": user_content}], model=model)
+    text = _chat_with_retry(provider, messages=[{"role": "user", "content": user_content}], model=model)
     try:
         return json.loads(text)
     except Exception:

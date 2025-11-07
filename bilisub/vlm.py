@@ -6,9 +6,16 @@ import json
 from typing import Any, Dict, List
 
 from PIL import Image
+import time
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from .providers.base import ProviderClient
 from .strategy import Strategy
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8))
+def _chat_with_retry(provider: ProviderClient, messages, model: str):
+    return provider.chat(messages=messages, model=model)
 
 
 def _pil_to_data_url(img: Image.Image) -> str:
@@ -61,14 +68,14 @@ def _build_vlm_prompt(style: str, language: str) -> str:
 
 
 def parse_frames_with_vlm(provider: ProviderClient, model: str, frames: List[Image.Image],
-                           strategy: Strategy, dry_run: bool = False) -> List[Dict[str, Any]]:
+                           strategy: Strategy, dry_run: bool = False, req_interval: float = 0.0) -> List[Dict[str, Any]]:
     prompt = _build_vlm_prompt(strategy.vlm_prompt_style, strategy.language)
     results: List[Dict[str, Any]] = []
 
     if dry_run:
         # send a single mock image-free prompt to provider to validate path
         content = [{"type": "text", "text": prompt}]
-        text = provider.chat(messages=[{"role": "user", "content": content}], model=model)
+        text = _chat_with_retry(provider, messages=[{"role": "user", "content": content}], model=model)
         try:
             parsed = json.loads(text)
         except Exception:
@@ -82,11 +89,13 @@ def parse_frames_with_vlm(provider: ProviderClient, model: str, frames: List[Ima
             {"type": "text", "text": prompt},
             {"type": "image_url", "image_url": {"url": data_url}},
         ]
-        text = provider.chat(messages=[{"role": "user", "content": content}], model=model)
+        text = _chat_with_retry(provider, messages=[{"role": "user", "content": content}], model=model)
         try:
             parsed = json.loads(text)
         except Exception:
             parsed = {"raw": text}
         results.append(parsed)
+        if req_interval > 0:
+            time.sleep(req_interval)
 
     return results

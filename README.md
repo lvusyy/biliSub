@@ -173,7 +173,7 @@ python -m bilisub \
   --provider openrouter \
   --vlm-model qwen2.5-vl-7b-instruct \
   --llm-model qwen2.5-7b-instruct \
-  --bv BV1xxxxxxx \
+  --url https://www.bilibili.com/video/BV1xxxxxxx \
   --out output/v2_summary.json
 ```
 
@@ -209,7 +209,11 @@ python -m bilisub \
 常用参数：
 - `--max-frames` 控制最多采样的帧数（默认 40）。
 - `--language` 指定总结语言（`auto/zh/en`）。
-- `--bv` B 站视频 BV 号，用于缓存命中与结果复用。
+- `--bv` B 站视频 BV 号，用于缓存命中与结果复用；或使用 `--url` 自动提取。
+- `--url` 可选：B 站视频 URL（自动提取 BV）。
+- `--refresh-cache` 忽略缓存，强制重新解析并覆盖缓存；`--cache-readonly` 命中缓存但不写回。
+- `--save-frames`/`--save-frames-dir` 保存采样帧缩略图（便于调试）。
+- `--vlm-req-interval` 连续 VLM 请求之间的间隔秒数（限流）。
 
 桥接现有下载流程（V1 -> V2）：
 
@@ -220,7 +224,7 @@ python bridge_v1_v2.py --output-dir output \
   --provider openrouter \
   --vlm-model qwen3-vl \
   --llm-model qwen2.5-7b-instruct \
-  --bv BV1xxxxxxx \
+  --url https://www.bilibili.com/video/BV1xxxxxxx \
   --out output/v2_summary_from_v1.json
 ```
 
