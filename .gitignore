@@ -17,3 +17,5 @@ api_results/
 venv/
 env/
 .env/
+# Reports
+download_report.json

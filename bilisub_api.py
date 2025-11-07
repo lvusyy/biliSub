@@ -15,14 +15,14 @@ from typing import Dict, List, Optional, Any, Union
 from pathlib import Path
 
 import uvicorn
+import aiohttp
+import shutil
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl
-from starlette.requests import Request
-from starlette.responses import JSONResponse
 
 from enhanced_bilisub import BiliSubDownloader, SubtitleFormat, DownloadTask
 
@@ -181,6 +181,7 @@ async def process_subtitle_task(task_id: str, task_request: TaskRequest):
             "asr_lang": task_request.asr_lang,
             "concurrency": 2,
             "temp_dir": str(RESULT_DIR / task_id / "temp"),
+            "output_dir": str(RESULT_DIR / task_id),
             "callback": ProgressCallback(task_id).update,
         }
         
@@ -212,17 +213,10 @@ async def process_subtitle_task(task_id: str, task_request: TaskRequest):
             result_files = []
             download_urls = {}
             
-            # 收集生成的文件
-            output_dir = Path("output") / download_tasks[0].bvid
-            if output_dir.exists():
+            # 收集生成的文件（已直接输出到任务目录）
+            if task_dir.exists():
                 for fmt in task_request.output_formats:
-                    # 查找指定格式的文件
-                    for file_path in output_dir.glob(f"*.{fmt}"):
-                        # 创建任务特定目录中的副本
-                        dest_path = task_dir / file_path.name
-                        if not dest_path.exists():
-                            shutil.copy(file_path, dest_path)
-                        
+                    for file_path in task_dir.glob(f"*.{fmt}"):
                         result_files.append(file_path.name)
                         download_urls[file_path.name] = f"/api/download/{task_id}/{file_path.name}"
             
