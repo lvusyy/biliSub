@@ -11,11 +11,6 @@ from rich.console import Console
 from rich.table import Table
 
 from .config import PipelineConfig, ProviderKind
-from .strategy import decide_strategy
-from .frames import sample_frames
-from .vlm import parse_frames_with_vlm
-from .summarize import summarize_video
-from .providers.base import build_provider
 
 console = Console()
 
@@ -65,72 +60,33 @@ def main(argv: Optional[list[str]] = None) -> None:
     if not subs_path.exists():
         raise SystemExit(f"字幕文件不存在: {subs_path}")
 
-    subs_text = _read_subtitles_text(subs_path)
-
-    # 1) 决策解析策略
-    strategy = decide_strategy(subs_text, preferred_lang=args.language)
-
-    table = Table(title="解析策略")
-    table.add_column("维度")
-    table.add_column("值")
-    table.add_row("内容类型", strategy.kind)
-    table.add_row("采样方式", strategy.sampling)
-    table.add_row("每分钟帧数", str(strategy.frames_per_min))
-    table.add_row("最大帧数", str(min(args.max_frames, strategy.max_frames)))
-    table.add_row("VLM提示风格", strategy.vlm_prompt_style)
-    console.print(table)
-
-    frames = []
-    if args.dry_run:
-        rprint("[yellow]Dry-run 模式：跳过视频解码，使用空白占位图帧[/yellow]")
-    else:
-        if not args.video:
-            raise SystemExit("非 dry-run 模式下必须提供 --video")
-        video_path = Path(args.video)
-        if not video_path.exists():
-            raise SystemExit(f"视频文件不存在: {video_path}")
-        frames = sample_frames(
-            str(video_path),
-            frames_per_min=strategy.frames_per_min,
-            max_frames=min(args.max_frames, strategy.max_frames),
-        )
-
-    # 2) 构建 Provider
-    provider = build_provider(cfg)
-
-    # 3) 画面解析
-    visual_notes = parse_frames_with_vlm(
-        provider=provider,
-        model=cfg.vlm_model,
-        frames=frames,
-        strategy=strategy,
-        dry_run=args.dry_run,
-    )
-
-    # 4) 总结
-    result = summarize_video(
-        provider=provider,
-        model=cfg.llm_model,
-        subtitles_text=subs_text,
-        visual_notes=visual_notes,
-        language=strategy.language,
-    )
-
-    # 直接复用 API 以获取缓存加持
+    # 直接调用 API（内含缓存逻辑）
     from .api import run_pipeline
     payload = run_pipeline(
         video_path=(None if args.dry_run else (str(Path(args.video)) if args.video else None)),
         subs_path=str(subs_path),
         provider=args.provider,
-        vlm_model=cfg.vlm_model,
-        llm_model=cfg.llm_model,
-        base_url=cfg.base_url,
+        vlm_model=args.vlm_model,
+        llm_model=args.llm_model,
+        base_url=args.base_url,
         api_key=cfg.api_key,
-        language=strategy.language,
-        max_frames=min(args.max_frames, strategy.max_frames),
+        language=args.language,
+        max_frames=args.max_frames,
         dry_run=args.dry_run,
         bv_id=args.bv,
     )
+
+    # 展示解析策略（以结果为准）
+    st = payload.get("strategy", {})
+    table = Table(title="解析策略")
+    table.add_column("维度")
+    table.add_column("值")
+    table.add_row("内容类型", str(st.get("kind")))
+    table.add_row("采样方式", str(st.get("sampling", "uniform")))
+    table.add_row("每分钟帧数", str(st.get("frames_per_min")))
+    table.add_row("最大帧数", str(st.get("max_frames")))
+    table.add_row("VLM提示风格", str(st.get("vlm_prompt_style")))
+    console.print(table)
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
