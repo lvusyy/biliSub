@@ -17,3 +17,4 @@ numpy>=1.23.0
 opencv-python>=4.8.0
 pydantic-settings>=2.2.1
 rich>=13.7.0
+yt-dlp>=2024.08.06

@@ -51,6 +51,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     parser.add_argument("--save-frames", action="store_true", help="保存采样帧缩略图")
     parser.add_argument("--save-frames-dir", type=str, default=None, help="保存帧图片的目录；若未提供且 --save-frames 开启，将按 BV 放入 output/frames/<BV>/")
     parser.add_argument("--vlm-req-interval", type=float, default=0.0, help="连续 VLM 请求之间的间隔秒数（限流）")
+    parser.add_argument("--one-shot", action="store_true", help="一步到位：通过 --url 下载视频+字幕并直接生成总结")
 
     args = parser.parse_args(argv)
 
@@ -61,6 +62,40 @@ def main(argv: Optional[list[str]] = None) -> None:
         base_url=args.base_url,
         api_key=os.environ.get(args.api_key_env) if args.api_key_env else None,
     )
+
+    # 一步到位路径：若指定 --one-shot 或仅提供 --url 则自动下载视频与字幕
+    if args.one_shot or (args.url and not args.video and not args.subs):
+        from .one_shot import run_one_shot
+        payload = run_one_shot(
+            url=args.url or "",
+            provider=args.provider,
+            vlm_model=args.vlm_model,
+            llm_model=args.llm_model,
+            base_url=args.base_url,
+            api_key=cfg.api_key,
+            language=args.language,
+            max_frames=args.max_frames,
+            refresh_cache=args.refresh_cache,
+            cache_readonly=args.cache_readonly,
+            vlm_req_interval=args.vlm_req_interval,
+            save_frames_dir=None,
+        )
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        # 展示策略
+        st = payload.get("strategy", {})
+        table = Table(title="解析策略")
+        table.add_column("维度")
+        table.add_column("值")
+        table.add_row("内容类型", str(st.get("kind")))
+        table.add_row("采样方式", str(st.get("sampling", "uniform")))
+        table.add_row("每分钟帧数", str(st.get("frames_per_min")))
+        table.add_row("最大帧数", str(st.get("max_frames")))
+        table.add_row("VLM提示风格", str(st.get("vlm_prompt_style")))
+        console.print(table)
+        rprint(f"[green]已写入[/green] {out_path}")
+        return
 
     subs_path = Path(args.subs)
     if not subs_path.exists():

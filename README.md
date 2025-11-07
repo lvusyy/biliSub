@@ -244,6 +244,50 @@ python bridge_v1_v2.py --output-dir output \
 
 ---
 
+## 一步到位（URL -> 下载 -> 总结）
+
+命令行：
+
+```bash
+# 直接输入 B 站 URL，一次性下载视频+字幕，并生成总结（默认并发限制与后台一致为3，仅当前进程无并发限制）
+python -m bilisub \
+  --url https://www.bilibili.com/video/BV1xxxxxxx \
+  --provider openrouter \
+  --vlm-model qwen3-vl \
+  --llm-model qwen2.5-7b-instruct \
+  --out output/v2_one_shot.json \
+  --one-shot
+```
+
+后台 API（FastAPI）：
+
+```bash
+uvicorn bilisub.server:app --host 0.0.0.0 --port 8001
+```
+
+- 并发限制：默认最多同时处理 3 个任务（可通过环境变量 `BILISUB_MAX_CONCURRENCY=3` 调整）。
+- 健康检查：GET /health
+- 一步到位：POST /one_shot
+  - body 示例：
+    ```json
+    {
+      "url": "https://www.bilibili.com/video/BV1xxxxxxx",
+      "provider": "openrouter",
+      "vlm_model": "qwen3-vl",
+      "llm_model": "qwen2.5-7b-instruct",
+      "language": "auto",
+      "max_frames": 40,
+      "refresh_cache": false,
+      "cache_readonly": false,
+      "vlm_req_interval": 0.2
+    }
+    ```
+- 依赖前置：
+  - 需要安装 `ffmpeg`（yt-dlp 合并音视频所需）
+  - `yt-dlp` 已在 requirements 中；如需 Cookie 访问高画质，请参阅 yt-dlp 文档。
+
+---
+
 ## 项目结构
 
 ```
