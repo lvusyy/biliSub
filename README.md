@@ -135,6 +135,92 @@ python enhanced_bilisub.py -i "https://www.bilibili.com/video/BV1xx411c79H" --as
 4. B站对API有请求频率限制，批量下载时建议适当控制并发数
 5. 若遇到"请求被拒绝"错误，可能是IP被临时封锁，建议使用代理或降低请求频率
 
+## V2：画面解析与总结（实验性）
+
+该版本在原有字幕下载/ASR 的基础上，新增“根据字幕自适应地选择视频画面解析策略”，再将“字幕 + 画面要点”融合，由大模型生成结构化总结。
+
+- 自适应策略：根据字幕关键词与语言，推断类型（教程/幻灯片/游戏/访谈/电影等），自动设置帧采样频率与视觉提示风格。
+- 多提供方接入：
+  - OpenRouter（需 `OPENROUTER_API_KEY`）
+  - OpenAI 兼容（OpenAI/自建/vLLM，支持 `--base-url` 与 `OPENAI_API_KEY`）
+  - Ollama 本地多模态（`--base-url http://localhost:11434`）
+  - Mock（离线联通性测试，不调用网络）
+- 输出：包含 `title/topics/timeline/key_takeaways/action_items/final_summary` 的 JSON。
+
+安装依赖：
+
+```bash
+pip install -r requirements.txt
+```
+
+快速体验（离线）：
+
+```bash
+python -m bilisub --subs README.md --provider mock --dry-run --out output/v2_demo.json
+```
+
+使用 OpenRouter + Qwen-VL：
+
+```bash
+# 先设置密钥（请自行替换）
+# Windows PowerShell
+$Env:OPENROUTER_API_KEY = "{{OPENROUTER_API_KEY}}"
+
+python -m bilisub \
+  --video path/to/video.mp4 \
+  --subs  path/to/subs.srt \
+  --provider openrouter \
+  --vlm-model qwen2.5-vl-7b-instruct \
+  --llm-model qwen2.5-7b-instruct \
+  --out output/v2_summary.json
+```
+
+使用 vLLM（OpenAI 兼容）：
+
+```bash
+python -m bilisub \
+  --video path/to/video.mp4 \
+  --subs  path/to/subs.srt \
+  --provider vllm \
+  --base-url http://localhost:8000/v1 \
+  --api-key-env OPENAI_API_KEY \
+  --vlm-model qwen2.5-vl-7b-instruct \
+  --llm-model qwen2.5-7b-instruct
+```
+
+使用 Ollama：
+
+```bash
+python -m bilisub \
+  --video path/to/video.mp4 \
+  --subs  path/to/subs.srt \
+  --provider ollama \
+  --base-url http://localhost:11434 \
+  --vlm-model llava:13b \
+  --llm-model qwen2.5:7b
+```
+
+常用参数：
+- `--max-frames` 控制最多采样的帧数（默认 40）。
+- `--language` 指定总结语言（`auto/zh/en`）。
+
+桥接现有下载流程（V1 -> V2）：
+
+```bash
+# 在 V1 生成字幕后，执行：
+python bridge_v1_v2.py --output-dir output \
+  --video path/to/video.mp4 \
+  --provider openrouter \
+  --vlm-model qwen3-vl \
+  --llm-model qwen2.5-7b-instruct \
+  --out output/v2_summary_from_v1.json
+```
+
+- `--output-dir` 会在该目录下递归查找最新的 `.srt/.ass/.vtt/.txt/.json` 字幕文件。
+- 若未提供 `--video` 则使用 `dry-run` 路径跑通管线（仅验证，结果有限）。
+
+---
+
 ## 项目结构
 
 ```
@@ -143,6 +229,14 @@ biliSub/
 ├── bilibiliSub.py        # 基础版程序
 ├── requirements.txt      # 依赖库列表
 ├── README.md             # 说明文档
+├── bilisub/              # V2 实现（本次新增）
+│   ├── cli.py            # 命令行入口（python -m bilisub）
+│   ├── config.py         # 配置与Provider选择
+│   ├── strategy.py       # 字幕驱动的策略决策
+│   ├── frames.py         # 帧采样工具（OpenCV）
+│   ├── vlm.py            # 画面解析编排（VLM 调用）
+│   ├── summarize.py      # 融合字幕+画面进行总结
+│   └── providers/        # 各平台对接（OpenRouter/OpenAI兼容/Ollama/Mock）
 └── output/               # 输出目录
     └── temp/             # 临时文件目录
 ```
