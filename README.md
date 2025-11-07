@@ -288,6 +288,12 @@ uvicorn bilisub.server:app --host 0.0.0.0 --port 8001
 
 ---
 
+## 更多文档
+- 快速开始：`docs/QUICKSTART.md`
+- 排错指南：`docs/TROUBLESHOOTING.md`
+
+---
+
 ## 项目结构
 
 ```
