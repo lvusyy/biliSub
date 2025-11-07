@@ -55,17 +55,19 @@ def run_pipeline(
     strategy = decide_strategy(subs_text, preferred_lang=language)
 
     # profile 用于更精确命中（不同配置可能产生不同结果）
+    effective_max = min(max_frames, strategy.max_frames)
     profile = {
         "pipeline_version": PIPELINE_VERSION,
-        "provider": str(provider),
+        "provider": provider.value,
         "vlm_model": vlm_model,
         "llm_model": llm_model,
         "language": language,
         "strategy": {
             "kind": strategy.kind,
+            "sampling": getattr(strategy, "sampling", "uniform"),
             "vlm_prompt_style": strategy.vlm_prompt_style,
             "frames_per_min": strategy.frames_per_min,
-            "max_frames": min(max_frames, strategy.max_frames),
+            "max_frames": effective_max,
         },
     }
 
@@ -116,8 +118,9 @@ def run_pipeline(
     payload = {
         "strategy": {
             "kind": strategy.kind,
+            "sampling": getattr(strategy, "sampling", "uniform"),
             "frames_per_min": strategy.frames_per_min,
-            "max_frames": strategy.max_frames,
+            "max_frames": effective_max,
             "vlm_prompt_style": strategy.vlm_prompt_style,
             "language": strategy.language,
         },
