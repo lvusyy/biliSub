@@ -5,11 +5,10 @@
     "buvid3": "你的buvid3值"
   },
   "concurrency": 3,
-//   "proxy": "http://127.0.0.1:10808",
   "proxy": "",
   "output_formats": ["srt", "ass", "vtt"],
   "use_asr": true,
-  "asr_model": "large",
+  "asr_model": "small",
   "asr_lang": "zh",
   "save_audio": false,
   "request_interval": 1.5,

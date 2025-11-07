@@ -18,7 +18,6 @@ import logging
 import requests
 import traceback
 import aiohttp
-import whisper
 from pathlib import Path
 import shutil  # 添加此行以检查系统命令
 
@@ -38,14 +37,6 @@ except ImportError:
     exit(1)
 
 # 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("bilisub.log", encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
 logger = logging.getLogger("BiliSub")
 
 # 默认配置
@@ -61,6 +52,7 @@ DEFAULT_CONFIG = {
     "threshold": 0.5,             # 语音识别置信度阈值
     "timeout": 30,                # 网络请求超时时间(秒)
     "temp_dir": "temp",           # 临时文件目录
+    "output_dir": "output",       # 输出目录
     "save_audio": False,          # 是否保存临时音频文件
     "filter_danmaku": True,       # 是否过滤弹幕噪声
     "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
@@ -142,6 +134,9 @@ class BiliSubDownloader:
             "asr_success": 0
         }
         
+        # 进度回调（可选）
+        self.callback = self.config.get("callback")
+        
         # 检查ffmpeg是否安装
         self._check_ffmpeg()
 
@@ -168,6 +163,7 @@ class BiliSubDownloader:
         """初始化Whisper语音识别模型"""
         if self.config["use_asr"] and not self.whisper_model:
             try:
+                import whisper
                 logger.info(f"正在加载Whisper模型 {self.config['asr_model']}...")
                 self.whisper_model = whisper.load_model(self.config["asr_model"])
                 logger.info("Whisper模型加载完成")
@@ -330,7 +326,7 @@ class BiliSubDownloader:
         wait=wait_fixed(2),
         retry=retry_if_exception_type((requests.RequestException, aiohttp.ClientError, json.JSONDecodeError))
     )
-    async def fetch_subtitle_list(self, task: DownloadTask) -> List[Dict]:
+    async def fetch_subtitle_list(self, task: DownloadTask) -> Dict:
         """获取字幕列表
         
         Args:
@@ -675,11 +671,13 @@ class BiliSubDownloader:
         """
         try:
             # 获取视频信息
-            task.info = await self.fetch_video_info(task)
+            async with self.semaphore:
+                task.info = await self.fetch_video_info(task)
             logger.info(f"获取视频信息成功: {task.title}")
             
             # 获取字幕列表
-            subtitle_list = await self.fetch_subtitle_list(task)
+            async with self.semaphore:
+                subtitle_list = await self.fetch_subtitle_list(task)
             
             subtitles = subtitle_list.get("subtitles", [])
             logger.info(f"获取到 {len(subtitles)} 个字幕")
@@ -742,7 +740,7 @@ class BiliSubDownloader:
                         
             # 如果成功获取字幕，生成输出文件
             if task.subs:
-                output_dir = os.path.join("output", task.bvid)
+                output_dir = os.path.join(self.config["output_dir"], task.bvid)
                 os.makedirs(output_dir, exist_ok=True)
                 
                 # 清理标题，用于文件名
@@ -796,6 +794,12 @@ class BiliSubDownloader:
                     logger.info(f"完成处理第 {idx+1}/{len(tasks)} 个视频: {t.bvid} - {'成功' if result else '失败'}")
                     # 每个任务处理完后稍作延迟，避免请求过于密集
                     await asyncio.sleep(self.config["request_interval"])
+                    # 进度回调（0-100）
+                    if self.callback:
+                        try:
+                            self.callback(((idx + 1) / len(tasks)) * 100.0)
+                        except Exception:
+                            pass
                     return result
                     
                 tasks_with_progress.append(process_with_progress(task, i))
@@ -1199,7 +1203,17 @@ def main():
     
     args = parser.parse_args()
     
-    # 创建输出目录
+    # 初始化日志
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler("bilisub.log", encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
+    
+    # 创建输出目录（命令行指定的默认目录，会被配置文件覆盖）
     os.makedirs(args.output, exist_ok=True)
     
     # 加载配置文件
@@ -1217,6 +1231,9 @@ def main():
     if not formats:
         formats = ["srt"]
     
+    # 确定输出目录
+    output_dir = config.get('output_dir', args.output)
+    
     # 创建下载器实例
     downloader_config = {
         "concurrency": config.get('concurrency', args.concurrency),
@@ -1226,7 +1243,8 @@ def main():
         "asr_model": config.get('asr_model', args.asr_model),
         "asr_lang": config.get('asr_lang', args.asr_lang),
         "save_audio": config.get('save_audio', args.save_audio),
-        "temp_dir": os.path.join(args.output, "temp")
+        "temp_dir": os.path.join(output_dir, "temp"),
+        "output_dir": output_dir,
     }
     
     # 移除None值
